@@ -42,13 +42,28 @@ def fetch_animal_data(animal_name):
     return None # Return None to stop processing
 
 
-def safe_summary(animals):
+# The function now accepts the animal_name to use in the error message
+def safe_summary(animals, animal_name):
   output = ''
 
-  # Check if animals is a list and not empty
+  # --- MODIFIED LOGIC FOR HANDLING EMPTY RESULTS ---
+  # If the API returns an empty list, generate the custom HTML message.
   if not animals or not isinstance(animals, list):
-      return '<li><p class="card__text">No animal data available or fetched no results.</p></li>'
+      # Create a custom, formatted error message inside a list item
+      # Use an <h3> tag for a slightly smaller heading than the example <h2>
+      error_message = f"""
+<li class="cards__item">
+    <div class="card__title">Search Failed 😥</div>
+    <p class="card__text">
+        <h3>The animal "<strong>{animal_name}</strong>" doesn't exist in our database.</h3>
+        <p>Please check your spelling and try another animal name.</p>
+    </p>
+</li>
+"""
+      return error_message
+  # --------------------------------------------------
 
+  # If animals were found, proceed with generating the cards
   for animal in animals:
     name = animal.get("name")
 
@@ -86,7 +101,7 @@ def safe_summary(animals):
 
 
 def main():
-  # --- NEW: Get the animal name from the user ---
+  # Get the animal name from the user
   print("Enter a name of an animal: ", end="")
   user_animal_name = input()
   
@@ -97,8 +112,8 @@ def main():
     print("Could not retrieve animal data. Exiting.")
     return
 
-  # STEP 2: Generate HTML summary
-  summary = safe_summary(animals_data)
+  # STEP 2: Generate HTML summary (pass the user's input name)
+  summary = safe_summary(animals_data, user_animal_name)
   tpl_path = 'animals_template.html'
 
   try:
@@ -127,12 +142,10 @@ def main():
     return
 
   # STEP 4: Write the final HTML output
-  # Use the requested output file name: animals.html
   output_path = 'animals.html' 
   try:
     with open(output_path, 'w', encoding='utf-8') as f:
       f.write(filled)
-    # Print the success message as requested
     print(f"Website was successfully generated to the file {output_path}.")
   except Exception as e:
     print(f"Error writing output {output_path}: {e}")
