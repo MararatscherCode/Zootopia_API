@@ -1,14 +1,56 @@
+import os
 import json
+import requests
+from dotenv import load_dotenv # Used for loading API Key securely
+
+# Load environment variables from .env file
+load_dotenv() 
+API_KEY = os.getenv("API_NINJAS_KEY")
+API_URL = "https://api.api-ninjas.com/v1/animals"
 
 
-def load_data(file_path):
-  """ Loads a JSON file """
-  with open(file_path, "r") as handle:
-    return json.load(handle)
+def fetch_animal_data(animal_name):
+  """ 
+  Fetches animal data from the API Ninjas Animal API.
+  Returns a list of animals (which can be empty).
+  """
+  if not API_KEY:
+    raise ValueError("API_NINJAS_KEY not found. Please create a .env file.")
+
+  # Headers must include the API key for authentication
+  headers = {'X-Api-Key': API_KEY}
+  
+  # Parameters include the 'name' of the animal to search for
+  params = {'name': animal_name}
+  
+  print(f"Fetching data for '{animal_name}' from API...")
+  
+  try:
+    response = requests.get(API_URL, headers=headers, params=params)
+    
+    # API Ninjas returns an empty list [] on success (200 OK) if no result is found.
+    # It will only return an error code (like 401, 403, 404, 500) for authentication 
+    # or server errors, not for a lack of search results.
+    response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
+    
+    # API Ninjas returns a JSON list of animals (or an empty list)
+    return response.json()
+    
+  except requests.exceptions.RequestException as e:
+    # Print the error for debugging
+    print(f"An API request error occurred: {e}")
+    if response is not None and response.status_code == 401:
+        print("Authentication Error: Check your API_NINJAS_KEY.")
+    return None # Return None to stop processing
 
 
 def safe_summary(animals):
   output = ''
+  
+  # Check if animals is a list and not empty
+  if not animals or not isinstance(animals, list):
+      return '<li><p class="card__text">No animal data available or fetched no results.</p></li>'
+      
   for animal in animals:
     name = animal.get("name")
     
@@ -22,19 +64,21 @@ def safe_summary(animals):
     # Card text (characteristics)
     output += '<p class="card__text">'
     
+    # The API Ninjas structure is slightly different: characteristics are nested.
     characteristics = animal.get("characteristics") or {}
+    
+    # Mapping the required fields to the API Ninjas response structure
     diet = characteristics.get("diet")
     if diet:
       output += f"<strong>Diet:</strong> {diet}<br/>\n"
 
-    locations = animal.get("locations") or []
-    if isinstance(locations, list) and len(locations) > 0:
-      first_location = locations[0]
-      if first_location:
-        output += f"<strong>Location:</strong> {first_location}<br/>\n"
+    # API Ninjas uses 'location' (singular string) under characteristics.
+    # Your old JSON used 'locations' (list) at the top level. We use the one that works.
+    locations = characteristics.get("location") 
+    if locations:
+      output += f"<strong>Location:</strong> {locations}<br/>\n"
         
-
-    type_value = characteristics.get("type")
+    type_value = characteristics.get("class") # 'class' in API Ninjas is often the taxonomic type
     if type_value:
       output += f"<strong>Type:</strong> {type_value}<br/>\n"
       
@@ -45,14 +89,17 @@ def safe_summary(animals):
 
 
 def main():
-  try:
-    animals_data = load_data('animals_data.json')
-  except Exception as e:
-    print(f"Error loading data: {e}")
+  # STEP 1: Fetch data for "Fox" from the API
+  animals_data = fetch_animal_data('Fox')
+  
+  if animals_data is None:
+    print("Could not retrieve animal data. Exiting.")
     return
 
+  # STEP 2: Generate HTML summary
   summary = safe_summary(animals_data)
   tpl_path = 'animals_template.html'
+  
   try:
     with open(tpl_path, 'r', encoding='utf-8') as f:
       tpl = f.read()
@@ -60,26 +107,31 @@ def main():
     print(f"Error reading template {tpl_path}: {e}")
     return
 
+  # STEP 3: Insert generated summary into the template
   start_tag = '<ul class="cards">'
   end_tag = '</ul>'
   
+  # Find the position to insert the new list items
   start_index = tpl.find(start_tag) + len(start_tag)
   end_index = tpl.find(end_tag)
 
   if start_index != -1 and end_index != -1:
+    # Use the portion before the end of the opening <ul> tag and after the closing </ul> tag
     before_list = tpl[:start_index]
     after_list = tpl[end_index:]
     
+    # Insert the new summary
     filled = f"{before_list}\n{summary}\n{after_list}"
   else:
     print("Error: Could not find <ul> tags in the template.")
     return
 
-  output_path = 'animals_template.html'
+  # STEP 4: Write the final HTML output
+  output_path = 'output_animals.html' # Changed output file to avoid overwriting the template
   try:
     with open(output_path, 'w', encoding='utf-8') as f:
       f.write(filled)
-    print(f"Generated {output_path} (template preserved as {tpl_path})")
+    print(f"Successfully generated {output_path} with {len(animals_data)} animal(s).")
   except Exception as e:
     print(f"Error writing output {output_path}: {e}")
 
